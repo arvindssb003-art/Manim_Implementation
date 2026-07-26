@@ -243,9 +243,14 @@ class ManimCodeGenerator:
         #         ↓
         # roundedrectangle
         #
+        # DashedLineObject
+        #         ↓
+        # dashedline
+        #
         # Then normalize it to:
         #
         # rounded_rectangle
+        # dashed_line
         object_type = (
             self._object_type(
                 obj
@@ -308,6 +313,9 @@ class ManimCodeGenerator:
             RoundedRectangleObject
                 -> roundedrectangle
 
+            DashedLineObject
+                -> dashedline
+
         The result is normalized separately by
         _normalize_object_type().
         """
@@ -351,6 +359,9 @@ class ManimCodeGenerator:
 
             rounded_rect
                 -> rounded_rectangle
+
+            dashedline
+                -> dashed_line
         """
 
         normalized = (
@@ -373,6 +384,9 @@ class ManimCodeGenerator:
             ),
             "rounded_rect": (
                 "rounded_rectangle"
+            ),
+            "dashedline": (
+                "dashed_line"
             ),
         }
 

@@ -19,6 +19,7 @@ class ObjectType(str, Enum):
     POLYGON = "polygon"
     LINE = "line"
     ARROW = "arrow"
+    DASHED_LINE = "dashed_line"
 
 
 class Position(str, Enum):
@@ -192,6 +193,16 @@ class LineObject(AnimationObject):
     """Line connecting two points."""
 
     object_type: ObjectType = ObjectType.LINE
+
+    start: str = Field(min_length=1)
+
+    end: str = Field(min_length=1)
+
+
+class DashedLineObject(AnimationObject):
+    """Dashed line connecting two existing objects."""
+
+    object_type: ObjectType = ObjectType.DASHED_LINE
 
     start: str = Field(min_length=1)
 

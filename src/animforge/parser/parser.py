@@ -7,6 +7,7 @@ from animforge.models import (
     AnimationType,
     ArrowObject,
     CircleObject,
+    DashedLineObject,
     DotObject,
     EllipseObject,
     LineObject,
@@ -146,6 +147,13 @@ class PromptParser:
                 ):
                     scene.add_object(
                         self._parse_line(line)
+                    )
+
+                elif line.upper().startswith(
+                    "DASHED_LINE "
+                ):
+                    scene.add_object(
+                        self._parse_dashed_line(line)
                     )
 
                 elif line.upper().startswith(
@@ -689,6 +697,32 @@ class PromptParser:
         object_id, start, end = match.groups()
 
         return LineObject(
+            id=object_id,
+            start=start,
+            end=end,
+        )
+
+    @staticmethod
+    def _parse_dashed_line(
+        line: str,
+    ) -> DashedLineObject:
+        """Parse a DASHED_LINE command."""
+
+        match = re.fullmatch(
+            r"DASHED_LINE\s+(\w+):\s*"
+            r"(\w+)\s+to\s+(\w+)",
+            line,
+            flags=re.IGNORECASE,
+        )
+
+        if not match:
+            raise ParserError(
+                "Invalid DASHED_LINE syntax."
+            )
+
+        object_id, start, end = match.groups()
+
+        return DashedLineObject(
             id=object_id,
             start=start,
             end=end,

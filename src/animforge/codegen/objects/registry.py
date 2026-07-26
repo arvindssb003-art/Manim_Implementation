@@ -40,6 +40,9 @@ from animforge.codegen.objects.text import (
 from animforge.codegen.objects.triangle import (
     TriangleObjectCodeGenerator,
 )
+from animforge.codegen.objects.dashed_line import (
+    DashedLineObjectCodeGenerator,
+)
 
 
 class ObjectGeneratorRegistry:
@@ -76,6 +79,7 @@ class ObjectGeneratorRegistry:
                 EllipseObjectCodeGenerator(),
                 RoundedRectangleObjectCodeGenerator(),
                 PolygonObjectCodeGenerator(),
+                DashedLineObjectCodeGenerator(),
             ]
 
         self._generators: dict[
