@@ -1,0 +1,11 @@
+SCENE: Neural Network
+
+TEXT title: "Neural Networks" at top
+CIRCLE input: blue below title
+RECTANGLE output: red below input
+ARROW connection: input to output
+
+ANIMATE title: write
+ANIMATE input: grow
+ANIMATE output: fade_in
+ANIMATE connection: fade_in

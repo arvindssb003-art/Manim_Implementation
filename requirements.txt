@@ -1,0 +1,7 @@
+manim
+pydantic
+jsonschema
+numpy
+pillow
+streamlit
+pytest
