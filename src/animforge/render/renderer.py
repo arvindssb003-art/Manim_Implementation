@@ -101,6 +101,22 @@ class ManimRenderer:
             exist_ok=True,
         )
 
+        # -----------------------------------------------------
+        # Capture the state of MP4 files before rendering.
+        #
+        # This lets us identify the file created by this
+        # specific render, even if Manim changes its output
+        # directory structure.
+        # -----------------------------------------------------
+
+        before_files = {
+            path.resolve()
+            for path in output_path.rglob(
+                "*.mp4"
+            )
+            if path.is_file()
+        }
+
         command = [
             "manim",
             f"-q{self.quality}",
@@ -132,6 +148,10 @@ class ManimRenderer:
                 )
             )
 
+        # -----------------------------------------------------
+        # First try the exact expected scene filename.
+        # -----------------------------------------------------
+
         video_path = (
             self._find_rendered_video(
                 output_path,
@@ -139,14 +159,73 @@ class ManimRenderer:
             )
         )
 
-        if video_path is None:
-            raise RenderError(
-                "Manim completed successfully, "
-                "but the rendered MP4 could not "
-                "be located."
+        if video_path is not None:
+            return video_path
+
+        # -----------------------------------------------------
+        # If the exact filename was not found, look for newly
+        # created MP4 files.
+        # -----------------------------------------------------
+
+        new_files = [
+            path
+            for path in output_path.rglob(
+                "*.mp4"
+            )
+            if path.is_file()
+            and path.resolve()
+            not in before_files
+        ]
+
+        if new_files:
+            new_files.sort(
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
             )
 
-        return video_path
+            return new_files[0]
+
+        # -----------------------------------------------------
+        # Final fallback:
+        #
+        # Search all MP4 files and choose the newest one.
+        #
+        # This handles cases where Manim overwrites an existing
+        # scene file instead of creating a new inode.
+        # -----------------------------------------------------
+
+        all_files = [
+            path
+            for path in output_path.rglob(
+                "*.mp4"
+            )
+            if path.is_file()
+        ]
+
+        if all_files:
+            all_files.sort(
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+
+            newest = all_files[0]
+
+            # Only accept a recent file. This prevents returning
+            # an unrelated old render if this render produced
+            # nothing.
+            if self._is_recent(
+                newest,
+                seconds=30,
+            ):
+                return newest
+
+        raise RenderError(
+            self._build_missing_video_message(
+                output_path,
+                scene_name,
+                result,
+            )
+        )
 
     @staticmethod
     def _find_rendered_video(
@@ -154,7 +233,7 @@ class ManimRenderer:
         scene_name: str,
     ) -> Path | None:
         """
-        Find the rendered MP4.
+        Find the exact rendered scene MP4.
 
         Searches recursively because Manim's output
         directory depends on the selected quality.
@@ -165,6 +244,14 @@ class ManimRenderer:
                 f"{scene_name}.mp4"
             )
         )
+
+        candidates = [
+            path
+            for path in candidates
+            if path.is_file()
+            and "partial_movie_files"
+            not in path.parts
+        ]
 
         if not candidates:
             return None
@@ -177,10 +264,109 @@ class ManimRenderer:
         return candidates[0]
 
     @staticmethod
+    def _is_recent(
+        path: Path,
+        seconds: int = 30,
+    ) -> bool:
+        """
+        Return True if a file was modified recently.
+        """
+
+        import time
+
+        age = (
+            time.time()
+            - path.stat().st_mtime
+        )
+
+        return age <= seconds
+
+    @staticmethod
+    def _build_missing_video_message(
+        media_dir: Path,
+        scene_name: str,
+        result: subprocess.CompletedProcess[str],
+    ) -> str:
+        """
+        Build a detailed error when Manim exits successfully
+        but no final MP4 can be located.
+        """
+
+        mp4_files = sorted(
+            str(path)
+            for path in media_dir.rglob(
+                "*.mp4"
+            )
+            if path.is_file()
+        )
+
+        stdout = (
+            result.stdout.strip()
+            if result.stdout
+            else ""
+        )
+
+        stderr = (
+            result.stderr.strip()
+            if result.stderr
+            else ""
+        )
+
+        message = [
+            "Manim completed successfully, "
+            "but the rendered MP4 could not "
+            "be located.",
+            "",
+            f"Scene: {scene_name}",
+            f"Media directory: {media_dir}",
+        ]
+
+        if mp4_files:
+            message.extend(
+                [
+                    "",
+                    "MP4 files currently found:",
+                    *mp4_files,
+                ]
+            )
+        else:
+            message.extend(
+                [
+                    "",
+                    "No MP4 files were found "
+                    "under the media directory.",
+                ]
+            )
+
+        if stdout:
+            message.extend(
+                [
+                    "",
+                    "Manim stdout:",
+                    stdout,
+                ]
+            )
+
+        if stderr:
+            message.extend(
+                [
+                    "",
+                    "Manim stderr:",
+                    stderr,
+                ]
+            )
+
+        return "\n".join(
+            message
+        )
+
+    @staticmethod
     def _build_error_message(
         result: subprocess.CompletedProcess[str],
     ) -> str:
-        """Build a useful rendering error message."""
+        """
+        Build a useful rendering error message.
+        """
 
         stderr = (
             result.stderr.strip()

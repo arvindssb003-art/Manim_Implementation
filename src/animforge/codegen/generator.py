@@ -28,24 +28,14 @@ class ManimCodeGenerator:
     Object-specific code generation is delegated to the
     ObjectGeneratorRegistry.
 
-    This generator does not use AI and does not execute
-    generated Python code.
+    The optional target_duration parameter ensures that the
+    generated Manim scene lasts at least the requested duration.
     """
 
     def __init__(
         self,
         object_registry: ObjectGeneratorRegistry | None = None,
     ) -> None:
-        """
-        Initialize the Manim code generator.
-
-        Args:
-            object_registry:
-                Optional custom object generator registry.
-
-                If omitted, the default registry is used.
-        """
-
         self.object_registry = (
             object_registry
             or ObjectGeneratorRegistry()
@@ -54,6 +44,7 @@ class ManimCodeGenerator:
     def generate(
         self,
         scene: Scene,
+        target_duration: float | None = None,
     ) -> str:
         """
         Generate complete Manim Python source code.
@@ -62,18 +53,25 @@ class ManimCodeGenerator:
             scene:
                 AnimForge scene model.
 
+            target_duration:
+                Optional minimum target duration in seconds.
+
+                If the generated animations finish before this
+                duration, a final self.wait() is added to keep
+                the video visible until the requested duration.
+
         Returns:
             Generated Manim Python source code.
-
-        Raises:
-            CodeGenerationError:
-                If the scene is invalid or generation fails.
         """
 
+        if target_duration is not None:
+            if target_duration <= 0:
+                raise CodeGenerationError(
+                    "Target duration must be greater than zero."
+                )
+
         try:
-            SceneValidator().validate(
-                scene
-            )
+            SceneValidator().validate(scene)
 
         except Exception as exc:
             raise CodeGenerationError(
@@ -90,17 +88,14 @@ class ManimCodeGenerator:
 
             lines.extend(
                 self._generate_class(
-                    scene
+                    scene,
+                    target_duration=target_duration,
                 )
             )
 
-            source = "\n".join(
-                lines
-            )
+            source = "\n".join(lines)
 
-            self.validate_python_syntax(
-                source
-            )
+            self.validate_python_syntax(source)
 
             return source
 
@@ -115,10 +110,6 @@ class ManimCodeGenerator:
 
     @staticmethod
     def _generate_header() -> list[str]:
-        """
-        Generate Python imports.
-        """
-
         return [
             "from manim import *",
             "",
@@ -128,9 +119,14 @@ class ManimCodeGenerator:
     def _generate_class(
         self,
         scene: Scene,
+        target_duration: float | None = None,
     ) -> list[str]:
         """
         Generate the Manim Scene class.
+
+        The requested target duration is enforced by adding
+        a final self.wait() when the generated animation
+        timeline is shorter than the requested duration.
         """
 
         class_name = (
@@ -159,6 +155,7 @@ class ManimCodeGenerator:
             )
         )
 
+        # Generate objects.
         for obj in scene.objects:
 
             object_lines = (
@@ -175,6 +172,9 @@ class ManimCodeGenerator:
 
             lines.append("")
 
+        # Generate animations.
+        total_animation_duration = 0.0
+
         for animation in scene.animations:
 
             animation_lines = (
@@ -190,16 +190,50 @@ class ManimCodeGenerator:
 
             lines.append("")
 
+            try:
+                total_animation_duration += float(
+                    animation.duration
+                )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+                raise CodeGenerationError(
+                    "Invalid animation duration: "
+                    f"{animation.duration}"
+                )
+
+        # Ensure requested target duration.
+        if target_duration is not None:
+
+            remaining_duration = (
+                float(target_duration)
+                - total_animation_duration
+            )
+
+            if remaining_duration > 0:
+
+                lines.append(
+                    "        # Keep the final "
+                    "scene visible until the "
+                    "requested duration."
+                )
+
+                lines.append(
+                    f"        self.wait("
+                    f"{remaining_duration:.3f}"
+                    f")"
+                )
+
+                lines.append("")
+
         return lines
 
     def _build_variable_map(
         self,
         scene: Scene,
     ) -> dict[str, str]:
-        """
-        Build a mapping from AnimForge object IDs
-        to generated Python variable names.
-        """
 
         variable_map: dict[
             str,
@@ -221,12 +255,6 @@ class ManimCodeGenerator:
         obj,
         variable_map: dict[str, str],
     ) -> list[str]:
-        """
-        Generate Manim code for one scene object.
-
-        The object generator is selected entirely
-        through the ObjectGeneratorRegistry.
-        """
 
         variable = (
             variable_map[
@@ -234,23 +262,6 @@ class ManimCodeGenerator:
             ]
         )
 
-        # Determine the object type from the
-        # concrete Python model class.
-        #
-        # Example:
-        #
-        # RoundedRectangleObject
-        #         ↓
-        # roundedrectangle
-        #
-        # DashedLineObject
-        #         ↓
-        # dashedline
-        #
-        # Then normalize it to:
-        #
-        # rounded_rectangle
-        # dashed_line
         object_type = (
             self._object_type(
                 obj
@@ -298,27 +309,6 @@ class ManimCodeGenerator:
     def _object_type(
         obj,
     ) -> str:
-        """
-        Determine the registry object type
-        from the concrete object class.
-
-        Examples:
-
-            TextObject
-                -> text
-
-            CircleObject
-                -> circle
-
-            RoundedRectangleObject
-                -> roundedrectangle
-
-            DashedLineObject
-                -> dashedline
-
-        The result is normalized separately by
-        _normalize_object_type().
-        """
 
         class_name = (
             type(obj)
@@ -342,27 +332,6 @@ class ManimCodeGenerator:
     def _normalize_object_type(
         object_type: str,
     ) -> str:
-        """
-        Normalize AnimForge object type names
-        before registry lookup.
-
-        Examples:
-
-            roundedrectangle
-                -> rounded_rectangle
-
-            rounded-rectangle
-                -> rounded_rectangle
-
-            rounded rectangle
-                -> rounded_rectangle
-
-            rounded_rect
-                -> rounded_rectangle
-
-            dashedline
-                -> dashed_line
-        """
 
         normalized = (
             object_type
@@ -399,9 +368,6 @@ class ManimCodeGenerator:
         self,
         animation: Animation,
     ) -> list[str]:
-        """
-        Generate Manim animation code.
-        """
 
         target = (
             self._variable_name(
@@ -465,16 +431,6 @@ class ManimCodeGenerator:
         variable: str,
         obj,
     ) -> list[str]:
-        """
-        Generate position instructions.
-
-        This method is retained as a shared utility
-        for compatibility with the existing generator
-        architecture.
-
-        Object-specific generators may also handle
-        positioning directly.
-        """
 
         lines: list[str] = []
 
@@ -569,12 +525,6 @@ class ManimCodeGenerator:
     def _color_constant(
         color: str,
     ) -> str:
-        """
-        Convert a color name to a Manim constant.
-
-        This utility remains available for
-        object generators and backward compatibility.
-        """
 
         color_map = {
             "red": "RED",
@@ -601,15 +551,6 @@ class ManimCodeGenerator:
     def _variable_name(
         object_id: str,
     ) -> str:
-        """
-        Convert an object ID into a safe Python variable.
-
-        Examples:
-
-            input -> input_obj
-            output -> output_obj
-            my-circle -> my_circle_obj
-        """
 
         name = re.sub(
             r"\W+",
@@ -647,9 +588,6 @@ class ManimCodeGenerator:
     def _class_name(
         scene_name: str,
     ) -> str:
-        """
-        Convert scene name to a valid Python class name.
-        """
 
         words = re.findall(
             r"[A-Za-z0-9]+",
@@ -677,11 +615,6 @@ class ManimCodeGenerator:
     def validate_python_syntax(
         source: str,
     ) -> None:
-        """
-        Validate generated source using Python AST parsing.
-
-        This does not execute the generated code.
-        """
 
         try:
             ast.parse(

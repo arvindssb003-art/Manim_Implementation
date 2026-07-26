@@ -14,11 +14,34 @@ st.set_page_config(
 )
 
 
+PROMPT_REFERENCE = """SCENE: Dynamic Geometry Demo
+
+TEXT title: "Circles and Parabolas" at top
+CIRCLE circle1: blue at center
+
+ANIMATE title: write
+ANIMATE circle1: grow
+
+ARC arc1: green radius=2 start=0 angle=180 at center
+GRAPH parabola: yellow y=x^2 at center
+"""
+
+
 def main() -> None:
     st.title("🎬 AnimForge")
+
     st.caption(
         "Convert animation prompts into Manim videos."
     )
+
+    with st.expander(
+        "📋 Prompt Reference - Copy an Example",
+        expanded=True,
+    ):
+        st.code(
+            PROMPT_REFERENCE,
+            language="text",
+        )
 
     st.subheader("Animation Prompt")
 
@@ -36,23 +59,44 @@ def main() -> None:
         ),
     )
 
-    quality = st.selectbox(
-        "Render Quality",
-        options=[
-            "l",
-            "m",
-            "h",
-            "p",
-            "k",
-        ],
-        index=0,
-        format_func=lambda value: {
-            "l": "Low - Fast Preview",
-            "m": "Medium",
-            "h": "High",
-            "p": "Production",
-            "k": "4K",
-        }[value],
+    st.subheader("Render Settings")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        quality = st.selectbox(
+            "Render Quality",
+            options=[
+                "l",
+                "m",
+                "h",
+                "p",
+                "k",
+            ],
+            index=0,
+            format_func=lambda value: {
+                "l": "Low - Fast Preview",
+                "m": "Medium",
+                "h": "High",
+                "p": "Production",
+                "k": "4K",
+            }[value],
+        )
+
+    with col2:
+        duration = st.number_input(
+            "Video Duration (seconds)",
+            min_value=5,
+            max_value=600,
+            value=120,
+            step=5,
+            help=(
+                "Minimum target duration of the generated video."
+            ),
+        )
+
+    st.info(
+        f"🎬 Target video duration: {duration:.0f} seconds"
     )
 
     generate_button = st.button(
@@ -75,6 +119,7 @@ def main() -> None:
             "Generating animation...",
             expanded=True,
         ) as status:
+
             st.write(
                 "Parsing and validating prompt..."
             )
@@ -84,11 +129,12 @@ def main() -> None:
             )
 
             st.write(
-                "Generating Manim code..."
+                f"Generating {duration:.0f}-second animation..."
             )
 
             result = pipeline.run(
                 prompt,
+                duration=duration,
             )
 
             st.write(
@@ -101,8 +147,11 @@ def main() -> None:
             )
 
         st.success(
-            f"Scene generated: "
-            f"{result.scene_name}"
+            f"Scene generated: {result.scene_name}"
+        )
+
+        st.info(
+            f"Requested duration: {duration:.0f} seconds"
         )
 
         col1, col2 = st.columns(2)
@@ -125,6 +174,14 @@ def main() -> None:
                     source,
                     language="python",
                 )
+
+                st.download_button(
+                    label="⬇️ Download Python Source",
+                    data=source,
+                    file_name=source_path.name,
+                    mime="text/x-python",
+                )
+
             else:
                 st.info(
                     "Generated Python file: "
@@ -155,6 +212,7 @@ def main() -> None:
                         file_name=video_path.name,
                         mime="video/mp4",
                     )
+
             else:
                 st.warning(
                     "Video file was not found: "
